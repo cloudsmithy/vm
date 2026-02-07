@@ -33,7 +33,7 @@
           </a-table-column>
           <a-table-column title="状态" data-index="state">
             <template #cell="{ record }">
-              <a-badge :status="stateBadge(record.state)" :text="stateText(record.state)" />
+              <a-badge :status="stateBadge(record.state, record.name)" :text="stateText(record.state, record.name)" />
             </template>
           </a-table-column>
           <a-table-column title="CPU" :width="160">
@@ -421,11 +421,15 @@ const selectOS = (key: string) => {
   form.machine = ''; form.cpuModel = ''; form.clock = ''
 }
 
-const stateText = (s: string) =>
-  ({ running: '运行中', shutoff: '已关机', paused: '已暂停', shutdown: '关机中' }[s] || s)
+const stateText = (s: string, name?: string) => {
+  if (name && pendingStates.value[name]) return pendingStates.value[name]
+  return ({ running: '运行中', shutoff: '已关机', paused: '已暂停', shutdown: '关机中' }[s] || s)
+}
 
-const stateBadge = (s: string) =>
-  ({ running: 'success', paused: 'warning', shutoff: 'default' }[s] || 'default') as any
+const stateBadge = (s: string, name?: string) => {
+  if (name && pendingStates.value[name]) return 'processing' as any
+  return ({ running: 'success', paused: 'warning', shutoff: 'default' }[s] || 'default') as any
+}
 
 const loadVMs = async () => {
   loading.value = true
@@ -449,11 +453,23 @@ const openVNC = (name: string) => {
   window.open(route.href, '_blank')
 }
 
+const pendingStates = ref<Record<string, string>>({})
+
 const doAction = async (name: string, action: 'start' | 'shutdown' | 'destroy' | 'reboot' | 'suspend' | 'resume') => {
   try {
     await vmApi[action](name)
     Message.success(actionTips[action] || '操作成功')
-    loadVMs()
+    const transient: Record<string, string> = { start: '启动中', shutdown: '关机中', destroy: '关机中', reboot: '重启中', suspend: '暂停中', resume: '恢复中' }
+    pendingStates.value[name] = transient[action] || '操作中'
+    // 轮询直到状态变化
+    let tries = 0
+    const poll = setInterval(async () => {
+      tries++
+      await loadVMs()
+      const vm = vms.value.find(v => v.name === name)
+      const done = !vm || (action === 'shutdown' && vm.state === 'shutoff') || (action === 'destroy' && vm.state === 'shutoff') || (action === 'start' && vm.state === 'running') || (action === 'reboot' && tries > 2) || (action === 'suspend' && vm.state === 'paused') || (action === 'resume' && vm.state === 'running')
+      if (done || tries >= 20) { clearInterval(poll); delete pendingStates.value[name] }
+    }, 2000)
   } catch { Message.error('操作失败') }
 }
 

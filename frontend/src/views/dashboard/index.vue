@@ -265,12 +265,10 @@ onBeforeUnmount(() => { mounted = false; if (timer) { clearInterval(timer); time
   display: flex;
   align-items: center;
   gap: 14px;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
-  transition: transform 0.15s, box-shadow 0.15s;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.04);
 }
 .stat-card:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(0,0,0,0.06);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.06);
 }
 .stat-icon {
   width: 42px;
@@ -283,9 +281,9 @@ onBeforeUnmount(() => { mounted = false; if (timer) { clearInterval(timer); time
   flex-shrink: 0;
 }
 .stat-body { min-width: 0; }
-.stat-label { font-size: 11px; color: #8e8e93; font-weight: 600; text-transform: uppercase; letter-spacing: 0.3px; }
-.stat-value { font-size: 18px; font-weight: 700; color: #1c1c1e; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.stat-sub { font-size: 13px; font-weight: 400; color: #8e8e93; }
+.stat-label { font-size: 12px; color: #86868b; font-weight: 600; letter-spacing: -0.1px; }
+.stat-value { font-size: 18px; font-weight: 700; color: #1d1d1f; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; letter-spacing: -0.3px; }
+.stat-sub { font-size: 13px; font-weight: 400; color: #86868b; }
 
 /* 图表行 */
 .chart-row {
@@ -298,7 +296,7 @@ onBeforeUnmount(() => { mounted = false; if (timer) { clearInterval(timer); time
   background: #fff;
   border-radius: 12px;
   padding: 18px;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+  box-shadow: 0 1px 2px rgba(0,0,0,0.04);
 }
 .gauge-header {
   display: flex;
@@ -306,22 +304,22 @@ onBeforeUnmount(() => { mounted = false; if (timer) { clearInterval(timer); time
   align-items: center;
   margin-bottom: 4px;
 }
-.gauge-title { font-size: 13px; font-weight: 600; color: #1c1c1e; }
+.gauge-title { font-size: 14px; font-weight: 600; color: #1d1d1f; letter-spacing: -0.2px; }
 .gauge-pct { font-size: 22px; font-weight: 700; letter-spacing: -0.5px; }
 .gauge-info {
   display: flex;
   justify-content: space-between;
-  font-size: 11px;
-  color: #8e8e93;
+  font-size: 12px;
+  color: #86868b;
   margin-top: 4px;
   padding: 0 4px;
 }
 
 /* 磁盘 */
 .section-title {
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 700;
-  color: #1c1c1e;
+  color: #1d1d1f;
   margin-bottom: 12px;
   letter-spacing: -0.2px;
 }
@@ -335,7 +333,7 @@ onBeforeUnmount(() => { mounted = false; if (timer) { clearInterval(timer); time
   background: #fff;
   border-radius: 12px;
   padding: 16px 18px;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+  box-shadow: 0 1px 2px rgba(0,0,0,0.04);
 }
 .disk-header {
   display: flex;
@@ -344,24 +342,24 @@ onBeforeUnmount(() => { mounted = false; if (timer) { clearInterval(timer); time
   margin-bottom: 12px;
 }
 .disk-icon { font-size: 20px; color: #007AFF; }
-.disk-mount { font-size: 14px; font-weight: 600; color: #1c1c1e; }
-.disk-device { font-size: 11px; color: #8e8e93; }
+.disk-mount { font-size: 14px; font-weight: 600; color: #1d1d1f; }
+.disk-device { font-size: 12px; color: #86868b; }
 .disk-bar-wrap {
-  height: 8px;
-  background: rgba(0,0,0,0.04);
-  border-radius: 4px;
+  height: 6px;
+  background: #e8e8ed;
+  border-radius: 3px;
   overflow: hidden;
 }
 .disk-bar {
   height: 100%;
-  border-radius: 4px;
+  border-radius: 3px;
   transition: width 0.5s ease;
 }
 .disk-stats {
   display: flex;
   justify-content: space-between;
   font-size: 12px;
-  color: #8e8e93;
+  color: #86868b;
   margin-top: 8px;
 }
 
@@ -371,18 +369,18 @@ onBeforeUnmount(() => { mounted = false; if (timer) { clearInterval(timer); time
   background: #fff;
   border-radius: 12px;
   padding: 4px 0;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+  box-shadow: 0 1px 2px rgba(0,0,0,0.04);
 }
 .info-row {
   display: flex;
   justify-content: space-between;
   align-items: center;
   padding: 12px 20px;
-  border-bottom: 0.5px solid rgba(0,0,0,0.04);
+  border-bottom: 1px solid #f5f5f7;
 }
 .info-row:last-child { border-bottom: none; }
-.info-label { font-size: 13px; color: #1c1c1e; font-weight: 500; }
-.info-value { font-size: 13px; color: #8e8e93; max-width: 60%; text-align: right; word-break: break-all; }
+.info-label { font-size: 14px; color: #1d1d1f; font-weight: 500; }
+.info-value { font-size: 14px; color: #86868b; max-width: 60%; text-align: right; word-break: break-all; }
 
 .vm-rank-row { display: flex; align-items: center; padding: 10px 20px; border-bottom: 0.5px solid rgba(0,0,0,0.04); gap: 12px; }
 .vm-rank-row:last-child { border-bottom: none; }

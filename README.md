@@ -42,7 +42,7 @@
 apt update
 
 # 安装 QEMU、libvirt、磁盘工具
-apt install -y qemu-kvm qemu-utils libvirt-daemon-system
+apt install -y qemu-kvm qemu-utils libvirt-daemon-system virtinst
 
 # 启动 libvirt 相关服务
 systemctl start libvirtd
@@ -75,8 +75,10 @@ chmod 666 /dev/kvm
 # 确认 KVM 可用
 virsh version
 
-# 确认 qemu-img 可用（创建磁盘需要）
-qemu-img --version
+# 确认所有依赖命令
+qemu-img --version   # 创建磁盘
+virt-clone --version  # 克隆虚拟机
+ip -V                 # 网桥管理
 
 # 确认 libvirt socket 存在
 ls /var/run/libvirt/libvirt-sock
@@ -175,6 +177,7 @@ server {
 |------|------|------|
 | `dial unix /var/run/libvirt/libvirt-sock: no such file` | libvirtd 未启动 | `systemctl start libvirtd` 或 `libvirtd -d` |
 | `connect socket to '/run/libvirt/virtlogd-sock': No such file` | virtlogd 未启动 | `systemctl start virtlogd` 或 `virtlogd -d` |
+| `clone failed:` (空错误) | virt-clone 未安装 | `apt install -y virtinst` |
 | `create disk failed:` (空错误) | qemu-img 未安装 | `apt install -y qemu-utils` |
 | `failed to initialize kvm: Permission denied` | /dev/kvm 权限不足 | `chmod 666 /dev/kvm` 或将用户加入 kvm 组 |
 

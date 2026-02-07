@@ -86,5 +86,5 @@ onMounted(load)
 
 <style scoped>
 code { font-family: 'SF Mono', 'Fira Code', monospace; font-size: 12px; background: rgba(0,0,0,0.04); padding: 2px 6px; border-radius: 4px; }
-.upload-bar { background: rgba(0,122,255,0.04); border-radius: 10px; padding: 16px; margin-bottom: 16px; }
+.upload-bar { background: #f5f5f7; border-radius: 12px; padding: 16px; margin-bottom: 16px; }
 </style>

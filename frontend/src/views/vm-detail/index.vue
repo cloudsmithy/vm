@@ -6,7 +6,7 @@
       </a-button>
       <div class="header-info">
         <h2 class="vm-name">{{ vmName }}</h2>
-        <a-badge v-if="detail" :status="detail.state === 'running' ? 'success' : detail.state === 'paused' ? 'warning' : 'default'" :text="stateText(detail.state)" />
+        <a-badge v-if="detail" :status="pendingState ? 'processing' : detail.state === 'running' ? 'success' : detail.state === 'paused' ? 'warning' : 'default'" :text="pendingState || stateText(detail.state)" />
       </div>
       <div style="flex:1" />
       <a-space>
@@ -252,9 +252,24 @@ const loadDetail = async () => {
 const hasISO = computed(() => detail.value?.disks?.some(d => d.device === 'cdrom' && d.source) ?? false)
 const doFinishInstall = async () => { try { await vmApi.finishInstall(vmName.value); Message.success('已完成安装设置，下次启动将从硬盘引导'); loadDetail() } catch { Message.error('操作失败') } }
 
+const pendingState = ref('')
+
 const doAction = async (action: 'start' | 'shutdown' | 'destroy' | 'reboot' | 'suspend' | 'resume') => {
   const tips: Record<string, string> = { shutdown: '关机信号已发送', destroy: '已强制关机', reboot: '重启信号已发送' }
-  try { await vmApi[action](vmName.value); Message.success(tips[action] || '操作成功'); setTimeout(loadDetail, 1000) } catch { Message.error('操作失败') }
+  const transient: Record<string, string> = { start: '启动中', shutdown: '关机中', destroy: '关机中', reboot: '重启中', suspend: '暂停中', resume: '恢复中' }
+  try {
+    await vmApi[action](vmName.value)
+    Message.success(tips[action] || '操作成功')
+    pendingState.value = transient[action] || '操作中'
+    let tries = 0
+    const poll = setInterval(async () => {
+      tries++
+      await loadDetail()
+      const s = detail.value?.state
+      const done = (action === 'shutdown' && s === 'shutoff') || (action === 'destroy' && s === 'shutoff') || (action === 'start' && s === 'running') || (action === 'reboot' && tries > 2) || (action === 'suspend' && s === 'paused') || (action === 'resume' && s === 'running')
+      if (done || tries >= 20) { clearInterval(poll); pendingState.value = '' }
+    }, 2000)
+  } catch { Message.error('操作失败') }
 }
 const loadAutostart = async () => { try { const r = await vmApi.getAutostart(vmName.value); autostart.value = r.autostart } catch {} }
 const onAutostartChange = async (v: boolean | string | number) => { try { await vmApi.setAutostart(vmName.value, v as boolean); Message.success(v ? '已开启自动启动' : '已关闭自动启动') } catch { Message.error('设置失败'); autostart.value = !v } }
@@ -331,21 +346,20 @@ onMounted(() => { loadDetail(); loadNetworks(); loadHostNICs(); loadBridges(); l
   background: #fff;
   border-radius: 12px;
   padding: 16px 20px;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+  box-shadow: 0 1px 2px rgba(0,0,0,0.04);
 }
 .info-card.clickable {
   cursor: pointer;
-  transition: box-shadow 0.2s;
+  transition: background 0.15s;
 }
 .info-card.clickable:hover {
-  box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+  background: #f5f5f7;
 }
 .info-label {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
-  color: var(--apple-gray);
-  text-transform: uppercase;
-  letter-spacing: 0.3px;
+  color: #86868b;
+  letter-spacing: -0.1px;
 }
 .info-value {
   font-size: 20px;
