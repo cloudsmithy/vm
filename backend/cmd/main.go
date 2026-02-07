@@ -2,8 +2,8 @@ package main
 
 import (
 	"log"
-	"kvmmm/internal/handler"
-	"kvmmm/internal/service"
+	"virtpanel/internal/handler"
+	"virtpanel/internal/service"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"

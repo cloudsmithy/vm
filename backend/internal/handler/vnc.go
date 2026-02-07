@@ -38,13 +38,22 @@ func (h *Handler) VNCWebSocket(c *gin.Context) {
 		return
 	}
 
-	// Bidirectional proxy
-	done := make(chan struct{}, 2)
+	// Bidirectional proxy with coordinated shutdown
+	var once sync.Once
+	closeAll := func() {
+		once.Do(func() {
+			vncConn.Close()
+			ws.Close()
+		})
+	}
+	var wg sync.WaitGroup
 	var wsMu sync.Mutex
 
 	// WS -> VNC
+	wg.Add(1)
 	go func() {
-		defer func() { done <- struct{}{} }()
+		defer wg.Done()
+		defer closeAll()
 		for {
 			_, msg, err := ws.ReadMessage()
 			if err != nil {
@@ -57,8 +66,10 @@ func (h *Handler) VNCWebSocket(c *gin.Context) {
 	}()
 
 	// VNC -> WS
+	wg.Add(1)
 	go func() {
-		defer func() { done <- struct{}{} }()
+		defer wg.Done()
+		defer closeAll()
 		buf := make([]byte, 32*1024)
 		for {
 			n, err := vncConn.Read(buf)
@@ -74,12 +85,7 @@ func (h *Handler) VNCWebSocket(c *gin.Context) {
 		}
 	}()
 
-	<-done
-	wsMu.Lock()
-	ws.Close()
-	wsMu.Unlock()
-	vncConn.Close()
-	<-done
+	wg.Wait()
 }
 
 // GetVNCPort returns the VNC port info for a VM

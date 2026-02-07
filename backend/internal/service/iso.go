@@ -3,7 +3,7 @@ package service
 import (
 	"fmt"
 	"io"
-	"kvmmm/internal/model"
+	"virtpanel/internal/model"
 	"os"
 	"path/filepath"
 	"strings"
@@ -37,7 +37,11 @@ func (s *LibvirtService) ListISOs() ([]model.ISOFile, error) {
 
 func (s *LibvirtService) UploadISO(filename string, reader io.Reader) error {
 	filename = filepath.Base(filename)
-	if !safeNameRe.MatchString(strings.TrimSuffix(filename, filepath.Ext(filename))) {
+	if !strings.HasSuffix(strings.ToLower(filename), ".iso") {
+		return fmt.Errorf("only .iso files allowed")
+	}
+	nameWithoutExt := strings.TrimSuffix(filename, filepath.Ext(filename))
+	if !safeNameRe.MatchString(nameWithoutExt) {
 		return fmt.Errorf("invalid filename: %s", filename)
 	}
 	os.MkdirAll(isoDir, 0755)
@@ -60,7 +64,8 @@ func (s *LibvirtService) DeleteISO(filename string) error {
 		return fmt.Errorf("not an iso file: %s", base)
 	}
 	path := filepath.Join(isoDir, base)
-	if filepath.Dir(path) != isoDir {
+	// Ensure resolved path is still under isoDir
+	if !strings.HasPrefix(filepath.Clean(path), filepath.Clean(isoDir)+string(filepath.Separator)) {
 		return fmt.Errorf("invalid filename")
 	}
 	return os.Remove(path)

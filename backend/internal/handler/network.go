@@ -3,7 +3,7 @@ package handler
 import (
 	"net/http"
 
-	"kvmmm/internal/model"
+	"virtpanel/internal/model"
 
 	"github.com/gin-gonic/gin"
 )

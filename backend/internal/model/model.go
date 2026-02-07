@@ -21,6 +21,7 @@ type CreateVMRequest struct {
 	Machine   string `json:"machine"`    // i440fx,q35 (default: q35 for windows, i440fx for others)
 	CPUModel  string `json:"cpu_model"`  // host-passthrough,host-model,qemu64 (default: host-passthrough for windows)
 	Clock     string `json:"clock"`      // utc,localtime (default: localtime for windows)
+	ISO       string `json:"iso"`        // optional install ISO path
 	VirtioISO string `json:"virtio_iso"` // optional second ISO for virtio drivers
 	NetMode   string `json:"net_mode"`   // nat, bridge, macvtap
 	BridgeName string `json:"bridge_name"` // bridge name for bridge mode

@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"kvmmm/internal/model"
+	"virtpanel/internal/model"
 )
 
 type poolXML struct {

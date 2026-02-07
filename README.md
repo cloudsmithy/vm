@@ -1,21 +1,22 @@
-# KVMMM
+# VirtPanel
 
-基于 KVM/libvirt 的轻量虚拟机管理面板。Go 后端 + Vue 3 前端。
+> 轻量级 KVM 虚拟机管理面板，基于 Go + Vue 3，开箱即用。
 
-## 功能
+![Go](https://img.shields.io/badge/Go-1.22+-00ADD8?logo=go&logoColor=white)
+![Vue](https://img.shields.io/badge/Vue-3-4FC08D?logo=vue.js&logoColor=white)
+![License](https://img.shields.io/badge/License-MIT-yellow)
 
-- 虚拟机管理（创建/启动/关机/重启/暂停/克隆/删除）
-- 创建时可选系统预设（Linux / Windows / 兼容模式）
-  - 自动配置芯片组（i440FX / Q35）、CPU 模式、时钟、磁盘总线、网卡类型
-  - 支持手动覆盖每项参数
-- VNC 控制台（浏览器内 noVNC）
-- 磁盘热挂载/卸载，ISO 挂载/弹出
-- 网卡热添加/移除
-- 快照管理（创建/恢复/删除）
-- 网络管理（NAT 网络创建/启停/删除）
-- 存储池和存储卷管理
-- ISO 镜像上传和管理
-- 仪表盘（主机信息、资源概览）
+## 特性
+
+- 🖥️ **虚拟机全生命周期** — 创建 / 启动 / 关机 / 重启 / 暂停 / 克隆 / 删除 / 重命名 / 导入
+- 🎯 **系统预设** — Linux / Windows / 兼容模式，自动配置芯片组、CPU、时钟、磁盘总线、网卡
+- 🖱️ **VNC 控制台** — 浏览器内 noVNC，支持 Ctrl+Alt+Del
+- 💾 **磁盘管理** — 热挂载/卸载磁盘，ISO 挂载/弹出
+- 🌐 **网络管理** — NAT / 桥接 / macvtap，网卡热添加/移除
+- 📸 **快照** — 创建 / 恢复 / 删除 / 恢复到新虚拟机
+- 🗄️ **存储** — 存储池和存储卷管理
+- 📊 **仪表盘** — 主机 CPU / 内存 / 磁盘 / 负载概览，虚拟机实时 CPU 和内存使用率
+- ⚡ **批量操作** — 批量启动 / 关机 / 强制关机 / 删除
 
 ## 技术栈
 
@@ -36,8 +37,8 @@
 ```bash
 # 后端
 cd backend
-go build -o kvmmm ./cmd/main.go
-./kvmmm   # 监听 :8080
+go build -o virtpanel ./cmd/main.go
+./virtpanel   # 监听 :8080
 
 # 前端（开发）
 cd frontend
@@ -51,7 +52,7 @@ pnpm build  # 输出到 dist/，用 nginx 反代即可
 ## 项目结构
 
 ```
-kvmmm/
+virtpanel/
 ├── backend/
 │   ├── cmd/main.go              # 入口
 │   ├── internal/
@@ -72,7 +73,7 @@ kvmmm/
 └── .gitignore
 ```
 
-## Nginx 生产部署示例
+## Nginx 部署
 
 ```nginx
 server {
@@ -96,7 +97,7 @@ server {
 }
 ```
 
-## API 概览
+## API
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
@@ -110,9 +111,12 @@ server {
 | GET | /api/vms/:name/detail | 虚拟机详情 |
 | POST | /api/vms/:name/iso | 挂载 ISO |
 | POST | /api/vms/:name/clone | 克隆 |
+| POST | /api/vms/:name/rename | 重命名 |
+| POST | /api/vms/import | 导入 |
+| POST | /api/vms/batch | 批量操作 |
 | GET | /ws/vnc/:name | VNC WebSocket |
 
-完整 API 见 `backend/cmd/main.go` 路由定义。
+完整路由见 `backend/cmd/main.go`。
 
 ## License
 

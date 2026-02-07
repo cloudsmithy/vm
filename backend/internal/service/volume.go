@@ -2,7 +2,8 @@ package service
 
 import (
 	"fmt"
-	"kvmmm/internal/model"
+	"strings"
+	"virtpanel/internal/model"
 )
 
 func (s *LibvirtService) ListVolumes(poolName string) ([]model.StorageVolume, error) {
@@ -75,6 +76,11 @@ func (s *LibvirtService) CreateVolume(req model.CreateVolumeRequest) error {
 	validFormat := map[string]bool{"qcow2": true, "raw": true, "vmdk": true, "vdi": true}
 	if !validFormat[req.Format] {
 		return fmt.Errorf("invalid format: %s", req.Format)
+	}
+	// Auto-append extension if missing
+	ext := "." + req.Format
+	if !strings.HasSuffix(req.Name, ext) {
+		req.Name = req.Name + ext
 	}
 	xmlDef := fmt.Sprintf(`<volume>
   <name>%s</name>

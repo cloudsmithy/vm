@@ -7,12 +7,13 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"sync"
 	"time"
 
-	"kvmmm/internal/model"
+	"virtpanel/internal/model"
 
 	libvirt "github.com/digitalocean/go-libvirt"
 )
@@ -28,14 +29,36 @@ type LibvirtService struct {
 	l          *libvirt.Libvirt
 	mu         sync.Mutex
 	cpuCache   map[string]cpuSample // domain name -> last cpu sample
+	hostCPU    float64              // cached host CPU usage
+	hostCPUMu  sync.RWMutex
+	stopCh     chan struct{}
 }
 
 func NewLibvirtService() (*LibvirtService, error) {
-	svc := &LibvirtService{cpuCache: make(map[string]cpuSample)}
+	svc := &LibvirtService{cpuCache: make(map[string]cpuSample), stopCh: make(chan struct{})}
 	if err := svc.connect(); err != nil {
 		return nil, err
 	}
+	svc.hostCPU = readCPUUsage() // initial sample
+	go svc.cpuSampleLoop()
 	return svc, nil
+}
+
+// cpuSampleLoop samples host CPU usage in background every 2s
+func (s *LibvirtService) cpuSampleLoop() {
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ticker.C:
+			v := readCPUUsage()
+			s.hostCPUMu.Lock()
+			s.hostCPU = v
+			s.hostCPUMu.Unlock()
+		case <-s.stopCh:
+			return
+		}
+	}
 }
 
 func (s *LibvirtService) connect() error {
@@ -61,6 +84,7 @@ func (s *LibvirtService) ensureConnected() error {
 }
 
 func (s *LibvirtService) Close() {
+	close(s.stopCh)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.l.Disconnect()
@@ -240,11 +264,11 @@ func (s *LibvirtService) StartVM(name string) error {
 	}
 	// After first boot from cdrom, switch boot order to hd-first
 	// so next reboot (after OS install) boots from disk
-	xmlStr, err := s.l.DomainGetXMLDesc(d, 0)
+	xmlStr, err := s.l.DomainGetXMLDesc(d, libvirt.DomainXMLInactive)
 	if err != nil {
 		return nil // VM started, non-fatal
 	}
-	bootRe := regexp.MustCompile(`<boot dev='cdrom'/>\s*<boot dev='hd'/>`)
+	bootRe := regexp.MustCompile(`<boot dev=['"]cdrom['"]/>\s*<boot dev=['"]hd['"]/>`)
 	if bootRe.MatchString(xmlStr) {
 		newXML := bootRe.ReplaceAllString(xmlStr, "<boot dev='hd'/><boot dev='cdrom'/>")
 		s.l.DomainDefineXML(newXML)
@@ -328,9 +352,31 @@ func (s *LibvirtService) DeleteVM(name string) error {
 		}
 	}
 
-	// Clean up disk files
-	for _, p := range diskPaths {
-		os.Remove(p)
+	// Clean up disk files (only if not used by other VMs)
+	if len(diskPaths) > 0 {
+		usedPaths := make(map[string]bool)
+		domains, _, listErr := s.l.ConnectListAllDomains(-1, 0)
+		if listErr == nil {
+			for _, od := range domains {
+				ox, err := s.l.DomainGetXMLDesc(od, libvirt.DomainXMLInactive)
+				if err != nil {
+					continue
+				}
+				var odx detailDomainXML
+				if xml.Unmarshal([]byte(ox), &odx) == nil {
+					for _, disk := range odx.Devices.Disks {
+						if disk.Source.File != "" {
+							usedPaths[disk.Source.File] = true
+						}
+					}
+				}
+			}
+		}
+		for _, p := range diskPaths {
+			if !usedPaths[p] {
+				os.Remove(p)
+			}
+		}
 	}
 	return nil
 }
@@ -432,10 +478,20 @@ func (s *LibvirtService) ImportVM(req model.ImportVMRequest) error {
 	if diskBus == "" {
 		diskBus = "virtio"
 	}
+	validBus := map[string]bool{"virtio": true, "sata": true, "scsi": true, "ide": true}
+	if !validBus[diskBus] {
+		return fmt.Errorf("unsupported disk bus: %s", diskBus)
+	}
 	diskDev := map[string]string{"virtio": "vda", "scsi": "sda", "sata": "sda", "ide": "hdc"}[diskBus]
 
+	// Validate disk path exists
+	cleanPath := filepath.Clean(req.DiskPath)
+	if _, err := os.Stat(cleanPath); err != nil {
+		return fmt.Errorf("磁盘文件不存在: %s", cleanPath)
+	}
+
 	format := "qcow2"
-	if strings.HasSuffix(req.DiskPath, ".raw") || strings.HasSuffix(req.DiskPath, ".img") {
+	if strings.HasSuffix(cleanPath, ".raw") || strings.HasSuffix(cleanPath, ".img") {
 		format = "raw"
 	}
 
@@ -464,9 +520,10 @@ func (s *LibvirtService) ImportVM(req model.ImportVMRequest) error {
     <video>
       <model type='qxl' ram='65536' vram='65536' vgamem='32768' heads='1' primary='yes'/>
     </video>
+    <input type='tablet' bus='usb'/>
     <console type='pty'/>
   </devices>
-</domain>`, req.Name, req.Memory, req.CPU, format, req.DiskPath, diskDev, diskBus)
+</domain>`, req.Name, req.Memory, req.CPU, format, cleanPath, diskDev, diskBus)
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -487,7 +544,7 @@ func (s *LibvirtService) UpdateVM(name string, req model.UpdateVMRequest) error 
 	if err != nil {
 		return err
 	}
-	xmlStr, err := s.l.DomainGetXMLDesc(d, 0)
+	xmlStr, err := s.l.DomainGetXMLDesc(d, libvirt.DomainXMLInactive)
 	if err != nil {
 		return err
 	}
@@ -520,12 +577,17 @@ func replaceXMLTag(xmlStr, tag, value string) string {
 
 func replaceXMLMemory(xmlStr string, kiB int) string {
 	xmlStr = replaceXMLTag(xmlStr, "memory", fmt.Sprintf("%d", kiB))
-	// Ensure unit attribute is KiB
 	re := regexp.MustCompile(`<memory[^>]*>`)
-	xmlStr = re.ReplaceAllString(xmlStr, fmt.Sprintf(`<memory unit='KiB'>`))
-	xmlStr = replaceXMLTag(xmlStr, "currentMemory", fmt.Sprintf("%d", kiB))
-	re2 := regexp.MustCompile(`<currentMemory[^>]*>`)
-	xmlStr = re2.ReplaceAllString(xmlStr, fmt.Sprintf(`<currentMemory unit='KiB'>`))
+	xmlStr = re.ReplaceAllString(xmlStr, `<memory unit='KiB'>`)
+	// Handle currentMemory: replace if exists, insert if not
+	if strings.Contains(xmlStr, "<currentMemory") {
+		xmlStr = replaceXMLTag(xmlStr, "currentMemory", fmt.Sprintf("%d", kiB))
+		re2 := regexp.MustCompile(`<currentMemory[^>]*>`)
+		xmlStr = re2.ReplaceAllString(xmlStr, `<currentMemory unit='KiB'>`)
+	} else {
+		xmlStr = strings.Replace(xmlStr, fmt.Sprintf("<memory unit='KiB'>%d</memory>", kiB),
+			fmt.Sprintf("<memory unit='KiB'>%d</memory>\n  <currentMemory unit='KiB'>%d</currentMemory>", kiB, kiB), 1)
+	}
 	return xmlStr
 }
 
@@ -629,16 +691,30 @@ func (s *LibvirtService) CreateVM(req model.CreateVMRequest) error {
 		virtioCdromDev = "sdc"
 	}
 
+	// Primary CDROM with optional install ISO
+	cdromSource := ""
+	if req.ISO != "" {
+		cleanISO := filepath.Clean(req.ISO)
+		if !strings.HasPrefix(cleanISO, isoDir+"/") {
+			return fmt.Errorf("iso path must be under %s", isoDir)
+		}
+		cdromSource = fmt.Sprintf("\n      <source file='%s'/>", cleanISO)
+	}
+
 	// Optional second CDROM for VirtIO drivers ISO
 	virtioCD := ""
 	if req.VirtioISO != "" {
+		cleanVirtio := filepath.Clean(req.VirtioISO)
+		if !strings.HasPrefix(cleanVirtio, isoDir+"/") {
+			return fmt.Errorf("virtio iso path must be under %s", isoDir)
+		}
 		virtioCD = fmt.Sprintf(`
     <disk type='file' device='cdrom'>
       <driver name='qemu' type='raw'/>
       <source file='%s'/>
       <target dev='%s' bus='%s'/>
       <readonly/>
-    </disk>`, req.VirtioISO, virtioCdromDev, cdromBus)
+    </disk>`, cleanVirtio, virtioCdromDev, cdromBus)
 	}
 
 	// Network interface XML based on mode
@@ -680,7 +756,7 @@ func (s *LibvirtService) CreateVM(req model.CreateVMRequest) error {
       <target dev='%s' bus='%s'/>
     </disk>
     <disk type='file' device='cdrom'>
-      <driver name='qemu' type='raw'/>
+      <driver name='qemu' type='raw'/>%s
       <target dev='%s' bus='%s'/>
       <readonly/>
     </disk>%s
@@ -689,9 +765,10 @@ func (s *LibvirtService) CreateVM(req model.CreateVMRequest) error {
     <video>
       <model type='qxl' ram='65536' vram='65536' vgamem='32768' heads='1' primary='yes'/>
     </video>
+    <input type='tablet' bus='usb'/>
     <console type='pty'/>
   </devices>
-</domain>`, req.Name, req.Memory, req.CPU, cpuXML, clockXML, machineAttr, scsiCtrl, req.Name, diskDev, diskBus, cdromDev, cdromBus, virtioCD, netXML)
+</domain>`, req.Name, req.Memory, req.CPU, cpuXML, clockXML, machineAttr, scsiCtrl, req.Name, diskDev, diskBus, cdromSource, cdromDev, cdromBus, virtioCD, netXML)
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -748,8 +825,10 @@ func (s *LibvirtService) GetHostInfo() (*model.HostInfo, error) {
 		}
 	}
 
-	// Read CPU usage from /proc/stat (two samples 200ms apart)
-	cpuUsage := readCPUUsage()
+	// Read cached CPU usage (sampled in background)
+	s.hostCPUMu.RLock()
+	cpuUsage := s.hostCPU
+	s.hostCPUMu.RUnlock()
 
 	vms, err := s.listVMsLocked()
 	if err != nil {

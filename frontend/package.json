@@ -1,5 +1,5 @@
 {
-  "name": "kvmmm-frontend",
+  "name": "virtpanel-frontend",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -14,7 +14,6 @@
     "@vueuse/core": "^10.9.0",
     "axios": "^1.7.0",
     "echarts": "^6.0.0",
-    "pinia": "^2.1.0",
     "vue": "^3.4.0",
     "vue-echarts": "^8.0.1",
     "vue-router": "^4.3.0"

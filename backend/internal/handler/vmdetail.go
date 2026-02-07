@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"net/url"
 
-	"kvmmm/internal/model"
+	"virtpanel/internal/model"
 
 	"github.com/gin-gonic/gin"
 )

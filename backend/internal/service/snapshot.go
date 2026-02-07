@@ -6,7 +6,9 @@ import (
 	"html"
 	"os/exec"
 
-	"kvmmm/internal/model"
+	"virtpanel/internal/model"
+
+	libvirt "github.com/digitalocean/go-libvirt"
 )
 
 type snapshotXML struct {
@@ -112,7 +114,7 @@ func (s *LibvirtService) RevertSnapshotToNew(vmName, snapName, newName string) e
 		return fmt.Errorf("invalid vm name: %s", newName)
 	}
 
-	// 1. Remember current snapshot (if any)
+	// 1. Check VM is shut off
 	s.mu.Lock()
 	if err := s.ensureConnected(); err != nil {
 		s.mu.Unlock()
@@ -122,6 +124,15 @@ func (s *LibvirtService) RevertSnapshotToNew(vmName, snapName, newName string) e
 	if err != nil {
 		s.mu.Unlock()
 		return err
+	}
+	state, _, _, _, _, err := s.l.DomainGetInfo(d)
+	if err != nil {
+		s.mu.Unlock()
+		return err
+	}
+	if libvirt.DomainState(state) != libvirt.DomainShutoff {
+		s.mu.Unlock()
+		return fmt.Errorf("虚拟机必须处于关机状态才能执行此操作")
 	}
 	currentSnap, currentErr := s.l.DomainSnapshotCurrent(d, 0)
 
@@ -135,8 +146,6 @@ func (s *LibvirtService) RevertSnapshotToNew(vmName, snapName, newName string) e
 		s.mu.Unlock()
 		return fmt.Errorf("revert failed: %w", err)
 	}
-	// Make sure VM is shut off for cloning
-	_ = s.l.DomainDestroy(d)
 	s.mu.Unlock()
 
 	// 3. Clone (runs outside lock, may be slow)

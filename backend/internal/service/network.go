@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"net"
 
-	"kvmmm/internal/model"
+	"virtpanel/internal/model"
 )
 
 type networkXML struct {
@@ -168,5 +168,14 @@ func (s *LibvirtService) CreateNetwork(req model.CreateNetworkRequest) error {
 </network>`, req.Name, req.Bridge, req.Subnet, req.Netmask, req.DHCPStart, req.DHCPEnd)
 
 	_, err := s.l.NetworkDefineXML(xmlDef)
-	return err
+	if err != nil {
+		return err
+	}
+	// Auto-start the newly created network
+	n, err := s.l.NetworkLookupByName(req.Name)
+	if err != nil {
+		return nil // defined but couldn't look up — non-fatal
+	}
+	_ = s.l.NetworkCreate(n)
+	return nil
 }

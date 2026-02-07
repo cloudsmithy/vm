@@ -2,7 +2,7 @@
   <div class="app-layout">
     <div class="sidebar" :class="{ collapsed }">
       <div class="sidebar-logo">
-        <span v-if="!collapsed" class="logo-text">虚拟化</span>
+        <span v-if="!collapsed" class="logo-text">VirtPanel</span>
         <span v-else class="logo-text">V</span>
       </div>
       <nav class="sidebar-nav">

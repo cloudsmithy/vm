@@ -48,7 +48,7 @@ export const vmApi = {
   suspend: (name: string) => http.post(`/vms/${name}/suspend`),
   resume: (name: string) => http.post(`/vms/${name}/resume`),
   delete: (name: string) => http.delete(`/vms/${name}`),
-  create: (data: { name: string; cpu: number; memory: number; disk: number; os_type?: string; disk_bus?: string; net_model?: string; machine?: string; cpu_model?: string; clock?: string; virtio_iso?: string; net_mode?: string; bridge_name?: string; macvtap_dev?: string }) =>
+  create: (data: { name: string; cpu: number; memory: number; disk: number; os_type?: string; iso?: string; disk_bus?: string; net_model?: string; machine?: string; cpu_model?: string; clock?: string; virtio_iso?: string; net_mode?: string; bridge_name?: string; macvtap_dev?: string }) =>
     http.post('/vms', data),
   update: (name: string, data: { cpu?: number; memory?: number }) =>
     http.put(`/vms/${name}`, data),

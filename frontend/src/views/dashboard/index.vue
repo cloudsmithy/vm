@@ -199,6 +199,7 @@ const sysInfo = computed(() => {
 })
 
 const load = async () => {
+  if (!mounted) return
   try {
     host.value = await hostApi.info()
     const now = new Date()
@@ -215,8 +216,9 @@ const load = async () => {
 }
 
 let timer: ReturnType<typeof setInterval> | null = null
+let mounted = true
 onMounted(() => { load(); timer = setInterval(load, 3000) })
-onBeforeUnmount(() => { if (timer) clearInterval(timer) })
+onBeforeUnmount(() => { mounted = false; if (timer) { clearInterval(timer); timer = null } })
 </script>
 
 <style scoped>

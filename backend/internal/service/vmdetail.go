@@ -3,7 +3,7 @@ package service
 import (
 	"encoding/xml"
 	"fmt"
-	"kvmmm/internal/model"
+	"virtpanel/internal/model"
 	"os/exec"
 	"path/filepath"
 	"regexp"
@@ -469,23 +469,21 @@ func (s *LibvirtService) FinishInstall(vmName string) error {
 	if err != nil {
 		return err
 	}
-	xmlStr, err := s.l.DomainGetXMLDesc(d, 0)
+	xmlStr, err := s.l.DomainGetXMLDesc(d, libvirt.DomainXMLInactive)
 	if err != nil {
 		return err
 	}
 
-	// Remove ISO from cdrom
-	cdromRe := regexp.MustCompile(`(?s)(<disk type='file' device='cdrom'>.*?)([ \t]*<source file='[^']*'/>[ \t]*\n?)(.*?</disk>)`)
+	// Remove ISO from cdrom (handle both single and double quotes)
+	cdromRe := regexp.MustCompile(`(?s)(<disk type=['"]file['"] device=['"]cdrom['"]>.*?)([ \t]*<source file=['"][^'"]*['"]/>[ \t]*\n?)(.*?</disk>)`)
 	xmlStr = cdromRe.ReplaceAllString(xmlStr, "${1}${3}")
 
-	// Change boot order: hd first, cdrom second
-	bootRe := regexp.MustCompile(`<boot dev='cdrom'/>\s*<boot dev='hd'/>`)
+	// Change boot order: hd first, cdrom second (handle both quote styles)
+	bootRe := regexp.MustCompile(`<boot dev=['"]cdrom['"]/>\s*<boot dev=['"]hd['"]/>`)
 	xmlStr = bootRe.ReplaceAllString(xmlStr, "<boot dev='hd'/><boot dev='cdrom'/>")
-	// Also handle case where StartVM already flipped it (just ensure hd is first)
-	bootRe2 := regexp.MustCompile(`<boot dev='hd'/>\s*<boot dev='cdrom'/>`)
+	bootRe2 := regexp.MustCompile(`<boot dev=['"]hd['"]/>\s*<boot dev=['"]cdrom['"]/>`)
 	if !bootRe2.MatchString(xmlStr) {
-		// Single boot entry or other format — try to ensure hd boot
-		singleBoot := regexp.MustCompile(`<boot dev='cdrom'/>`)
+		singleBoot := regexp.MustCompile(`<boot dev=['"]cdrom['"]/>`)
 		xmlStr = singleBoot.ReplaceAllString(xmlStr, "<boot dev='hd'/><boot dev='cdrom'/>")
 	}
 

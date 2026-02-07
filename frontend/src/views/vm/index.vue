@@ -311,7 +311,7 @@
 import { ref, reactive, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { vmApi, type VM } from '../../api/vm'
-import http from '../../api/http'
+import { hostApi } from '../../api/host'
 import { isoApi, type ISOFile } from '../../api/iso'
 import { Message } from '@arco-design/web-vue'
 import { IconPlus, IconCheck } from '@arco-design/web-vue/es/icon'
@@ -451,7 +451,7 @@ const openCreate = async () => {
   step.value = 1
   Object.assign(form, { name: '', cpu: 2, memory: 2048, disk: 20, iso: '', osType: 'linux', diskBus: '', netModel: '', virtioISO: '', netMode: 'nat', bridgeName: 'br0', macvtapDev: 'eth0' })
   try { createISOs.value = await isoApi.list() } catch { /* */ }
-  try { hostNICs.value = await http.get('/host/nics'); if (hostNICs.value.length) form.macvtapDev = hostNICs.value[0].name } catch { /* */ }
+  try { hostNICs.value = await hostApi.nics(); if (hostNICs.value.length) form.macvtapDev = hostNICs.value[0].name } catch { /* */ }
   showCreate.value = true
 }
 
@@ -469,6 +469,7 @@ const onCreate = async () => {
     await vmApi.create({
       name: form.name, cpu: form.cpu, memory: form.memory, disk: form.disk,
       os_type: form.osType,
+      iso: form.iso || undefined,
       disk_bus: form.diskBus || undefined,
       net_model: form.netModel || undefined,
       machine: form.machine || undefined,
@@ -479,7 +480,6 @@ const onCreate = async () => {
       bridge_name: form.netMode === 'bridge' ? form.bridgeName : undefined,
       macvtap_dev: form.netMode === 'macvtap' ? form.macvtapDev : undefined,
     })
-    if (form.iso) await vmApi.attachISO(form.name, form.iso)
     Message.success('创建成功')
     showCreate.value = false
     loadVMs()
