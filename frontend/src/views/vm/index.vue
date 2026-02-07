@@ -433,7 +433,7 @@ const stateText = (s: string, name?: string) => {
 
 const stateBadge = (s: string, name?: string) => {
   if (name && pendingStates.value[name]) return 'processing' as any
-  return ({ running: 'success', paused: 'warning', shutoff: 'default' }[s] || 'default') as any
+  return ({ running: 'success', paused: 'warning', shutoff: 'normal' }[s] || 'normal') as any
 }
 
 const loadVMs = async () => {

@@ -72,6 +72,7 @@ func main() {
 		api.POST("/networks/:name/start", h.StartNetwork)
 		api.POST("/networks/:name/stop", h.StopNetwork)
 		api.DELETE("/networks/:name", h.DeleteNetwork)
+		api.GET("/networks/:name/leases", h.ListDHCPLeases)
 
 		// Storage pools
 		api.GET("/storage-pools", h.ListStoragePools)
@@ -94,7 +95,15 @@ func main() {
 		api.GET("/bridges", h.ListBridges)
 		api.POST("/bridges", h.CreateBridge)
 		api.DELETE("/bridges/:name", h.DeleteBridge)
+
+		// Port forwards
+		api.GET("/port-forwards", h.ListPortForwards)
+		api.POST("/port-forwards", h.AddPortForward)
+		api.DELETE("/port-forwards/:id", h.DeletePortForward)
 	}
+
+	// Restore saved port forward rules
+	svc.RestorePortForwards()
 
 	r.GET("/ws/vnc/:name", h.VNCWebSocket)
 

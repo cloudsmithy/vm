@@ -6,7 +6,7 @@
       </a-button>
       <div class="header-info">
         <h2 class="vm-name">{{ vmName }}</h2>
-        <a-badge v-if="detail" :status="pendingState ? 'processing' : detail.state === 'running' ? 'success' : detail.state === 'paused' ? 'warning' : 'default'" :text="pendingState || stateText(detail.state)" />
+        <a-badge v-if="detail" :status="pendingState ? 'processing' : detail.state === 'running' ? 'success' : detail.state === 'paused' ? 'warning' : 'normal'" :text="pendingState || stateText(detail.state)" />
       </div>
       <div style="flex:1" />
       <a-space>

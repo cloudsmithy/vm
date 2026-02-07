@@ -53,3 +53,12 @@ func (h *Handler) DeleteNetwork(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "deleted"})
 }
+
+func (h *Handler) ListDHCPLeases(c *gin.Context) {
+	leases, err := h.svc.ListDHCPLeases(c.Param("name"))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, leases)
+}

@@ -44,7 +44,7 @@ import { useRouter, useRoute } from 'vue-router'
 import { hostApi } from '../api/host'
 import {
   IconDashboard, IconDesktop, IconWifi, IconStorage, IconHistory, IconFile,
-  IconLeft, IconRight, IconShareExternal,
+  IconLeft, IconRight, IconShareExternal, IconSwap,
 } from '@arco-design/web-vue/es/icon'
 
 const router = useRouter()
@@ -68,6 +68,7 @@ const menuItems = [
   { key: 'snapshot', label: '快照', icon: IconHistory },
   { key: 'network', label: '网络', icon: IconWifi },
   { key: 'bridge', label: '网桥', icon: IconShareExternal },
+  { key: 'portforward', label: '端口转发', icon: IconSwap },
   { key: 'storage', label: '存储', icon: IconStorage },
   { key: 'iso', label: '镜像', icon: IconFile },
 ]
@@ -79,7 +80,7 @@ const currentRoute = computed(() => {
 
 const titles: Record<string, string> = {
   dashboard: '概览', vm: '虚拟机', 'vm-detail': '虚拟机详情',
-  snapshot: '快照', network: '网络', bridge: '网桥', storage: '存储', iso: '镜像',
+  snapshot: '快照', network: '网络', bridge: '网桥', portforward: '端口转发', storage: '存储', iso: '镜像',
 }
 const pageTitle = computed(() => titles[route.name as string] || '')
 const onMenuClick = (key: string) => router.push({ name: key })

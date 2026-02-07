@@ -17,6 +17,7 @@ const router = createRouter({
         { path: 'bridge', name: 'bridge', component: () => import('../views/bridge/index.vue') },
         { path: 'storage', name: 'storage', component: () => import('../views/storage/index.vue') },
         { path: 'iso', name: 'iso', component: () => import('../views/iso/index.vue') },
+        { path: 'portforward', name: 'portforward', component: () => import('../views/portforward/index.vue') },
       ],
     },
     {

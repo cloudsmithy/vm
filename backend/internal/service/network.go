@@ -4,6 +4,7 @@ import (
 	"encoding/xml"
 	"fmt"
 	"net"
+	"os/exec"
 
 	"virtpanel/internal/model"
 )
@@ -178,4 +179,89 @@ func (s *LibvirtService) CreateNetwork(req model.CreateNetworkRequest) error {
 	}
 	_ = s.l.NetworkCreate(n)
 	return nil
+}
+
+type DHCPLease struct {
+	IP       string `json:"ip"`
+	MAC      string `json:"mac"`
+	Hostname string `json:"hostname"`
+}
+
+func (s *LibvirtService) ListDHCPLeases(networkName string) ([]DHCPLease, error) {
+	out, err := execCmd("virsh", "net-dhcp-leases", networkName)
+	if err != nil {
+		return nil, fmt.Errorf("获取 DHCP 租约失败: %v", err)
+	}
+	var leases []DHCPLease
+	for _, line := range splitLines(out) {
+		fields := splitFields(line)
+		if len(fields) >= 7 && fields[3] == "ipv4" {
+			ip := fields[4]
+			if idx := indexOf(ip, '/'); idx > 0 {
+				ip = ip[:idx]
+			}
+			hostname := fields[5]
+			if hostname == "-" {
+				hostname = ""
+			}
+			leases = append(leases, DHCPLease{IP: ip, MAC: fields[2], Hostname: hostname})
+		}
+	}
+	if leases == nil {
+		leases = []DHCPLease{}
+	}
+	return leases, nil
+}
+
+func splitLines(s string) []string {
+	var lines []string
+	start := 0
+	for i := 0; i < len(s); i++ {
+		if s[i] == '\n' {
+			lines = append(lines, s[start:i])
+			start = i + 1
+		}
+	}
+	if start < len(s) {
+		lines = append(lines, s[start:])
+	}
+	return lines
+}
+
+func splitFields(s string) []string {
+	var fields []string
+	inField := false
+	start := 0
+	for i := 0; i < len(s); i++ {
+		if s[i] == ' ' || s[i] == '\t' {
+			if inField {
+				fields = append(fields, s[start:i])
+				inField = false
+			}
+		} else {
+			if !inField {
+				start = i
+				inField = true
+			}
+		}
+	}
+	if inField {
+		fields = append(fields, s[start:])
+	}
+	return fields
+}
+
+func indexOf(s string, c byte) int {
+	for i := 0; i < len(s); i++ {
+		if s[i] == c {
+			return i
+		}
+	}
+	return -1
+}
+
+func execCmd(name string, args ...string) (string, error) {
+	cmd := exec.Command(name, args...)
+	out, err := cmd.CombinedOutput()
+	return string(out), err
 }
