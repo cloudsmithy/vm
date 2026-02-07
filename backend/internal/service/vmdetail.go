@@ -6,6 +6,7 @@ import (
 	"kvmmm/internal/model"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	libvirt "github.com/digitalocean/go-libvirt"
@@ -456,4 +457,38 @@ func (s *LibvirtService) CloneVM(srcName string, req model.CloneVMRequest) error
 		return fmt.Errorf("clone failed: %s", string(output))
 	}
 	return nil
+}
+
+func (s *LibvirtService) FinishInstall(vmName string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := s.ensureConnected(); err != nil {
+		return err
+	}
+	d, err := s.l.DomainLookupByName(vmName)
+	if err != nil {
+		return err
+	}
+	xmlStr, err := s.l.DomainGetXMLDesc(d, 0)
+	if err != nil {
+		return err
+	}
+
+	// Remove ISO from cdrom
+	cdromRe := regexp.MustCompile(`(?s)(<disk type='file' device='cdrom'>.*?)([ \t]*<source file='[^']*'/>[ \t]*\n?)(.*?</disk>)`)
+	xmlStr = cdromRe.ReplaceAllString(xmlStr, "${1}${3}")
+
+	// Change boot order: hd first, cdrom second
+	bootRe := regexp.MustCompile(`<boot dev='cdrom'/>\s*<boot dev='hd'/>`)
+	xmlStr = bootRe.ReplaceAllString(xmlStr, "<boot dev='hd'/><boot dev='cdrom'/>")
+	// Also handle case where StartVM already flipped it (just ensure hd is first)
+	bootRe2 := regexp.MustCompile(`<boot dev='hd'/>\s*<boot dev='cdrom'/>`)
+	if !bootRe2.MatchString(xmlStr) {
+		// Single boot entry or other format — try to ensure hd boot
+		singleBoot := regexp.MustCompile(`<boot dev='cdrom'/>`)
+		xmlStr = singleBoot.ReplaceAllString(xmlStr, "<boot dev='hd'/><boot dev='cdrom'/>")
+	}
+
+	_, err = s.l.DomainDefineXML(xmlStr)
+	return err
 }

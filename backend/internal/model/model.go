@@ -22,17 +22,32 @@ type CreateVMRequest struct {
 	CPUModel  string `json:"cpu_model"`  // host-passthrough,host-model,qemu64 (default: host-passthrough for windows)
 	Clock     string `json:"clock"`      // utc,localtime (default: localtime for windows)
 	VirtioISO string `json:"virtio_iso"` // optional second ISO for virtio drivers
+	NetMode   string `json:"net_mode"`   // nat, bridge, macvtap
+	BridgeName string `json:"bridge_name"` // bridge name for bridge mode
+	MacvtapDev string `json:"macvtap_dev"` // physical device for macvtap
 }
 
 type HostInfo struct {
-	Hostname    string  `json:"hostname"`
-	CPUModel    string  `json:"cpu_model"`
-	CPUCount    int     `json:"cpu_count"`
-	CPUUsage    float64 `json:"cpu_usage"`     // percent 0-100
-	MemoryTotal int     `json:"memory_total"`  // MB
-	MemoryFree  int     `json:"memory_free"`   // MB (available)
-	VMRunning   int     `json:"vm_running"`
-	VMTotal     int     `json:"vm_total"`
+	Hostname    string    `json:"hostname"`
+	CPUModel    string    `json:"cpu_model"`
+	CPUCount    int       `json:"cpu_count"`
+	CPUUsage    float64   `json:"cpu_usage"`     // percent 0-100
+	MemoryTotal int       `json:"memory_total"`  // MB
+	MemoryFree  int       `json:"memory_free"`   // MB (available)
+	VMRunning   int       `json:"vm_running"`
+	VMTotal     int       `json:"vm_total"`
+	Uptime      int64     `json:"uptime"`        // seconds
+	LoadAvg     [3]float64 `json:"load_avg"`
+	Disks       []DiskInfo `json:"disks"`
+}
+
+type DiskInfo struct {
+	Mount     string `json:"mount"`
+	Device    string `json:"device"`
+	Total     uint64 `json:"total"`     // GB
+	Used      uint64 `json:"used"`      // GB
+	Available uint64 `json:"available"` // GB
+	Percent   int    `json:"percent"`
 }
 
 type Network struct {
@@ -156,4 +171,21 @@ type CloneVMRequest struct {
 
 type RevertSnapshotToNewRequest struct {
 	NewName string `json:"new_name" binding:"required"`
+}
+
+type RenameVMRequest struct {
+	NewName string `json:"new_name" binding:"required"`
+}
+
+type ImportVMRequest struct {
+	Name     string `json:"name" binding:"required"`
+	DiskPath string `json:"disk_path" binding:"required"`
+	CPU      int    `json:"cpu"`
+	Memory   int    `json:"memory"`
+	DiskBus  string `json:"disk_bus"`
+}
+
+type BatchActionRequest struct {
+	Names  []string `json:"names" binding:"required"`
+	Action string   `json:"action" binding:"required"`
 }

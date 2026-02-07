@@ -4,13 +4,21 @@
       <template #extra>
         <a-space>
           <a-switch v-model="autoRefresh" checked-text="自动刷新" unchecked-text="自动刷新" />
+          <template v-if="selectedKeys.length">
+            <a-button size="small" type="primary" @click="doBatch('start')">批量启动</a-button>
+            <a-button size="small" status="warning" @click="doBatch('shutdown')">批量关机</a-button>
+            <a-popconfirm content="确认批量删除？" @ok="doBatch('delete')">
+              <a-button size="small" status="danger">批量删除</a-button>
+            </a-popconfirm>
+          </template>
+          <a-button @click="showImport = true">导入</a-button>
           <a-button type="primary" @click="openCreate">
             <template #icon><icon-plus /></template>
             创建虚拟机
           </a-button>
         </a-space>
       </template>
-      <a-table :data="vms" :loading="loading" row-key="uuid" :pagination="false">
+      <a-table :data="vms" :loading="loading" row-key="name" :pagination="false" :row-selection="{ type: 'checkbox', showCheckedAll: true }" v-model:selectedKeys="selectedKeys">
         <template #columns>
           <a-table-column title="名称" data-index="name">
             <template #cell="{ record }">
@@ -38,6 +46,11 @@
               </template>
             </template>
           </a-table-column>
+          <a-table-column title="自动启动" :width="100">
+            <template #cell="{ record }">
+              <a-switch v-model="autostartMap[record.name]" size="small" @change="(v: boolean) => toggleAutostart(record.name, v)" />
+            </template>
+          </a-table-column>
           <a-table-column title="操作">
             <template #cell="{ record }">
               <a-space>
@@ -51,6 +64,7 @@
                 <a-button v-if="record.state === 'running'" size="small" @click="doAction(record.name, 'suspend')">暂停</a-button>
                 <a-button v-if="record.state === 'paused'" size="small" type="primary" @click="doAction(record.name, 'resume')">恢复</a-button>
                 <a-button v-if="record.state === 'shutoff'" size="small" @click="openEdit(record)">编辑</a-button>
+                <a-button v-if="record.state === 'shutoff'" size="small" @click="openRename(record.name)">重命名</a-button>
                 <a-button v-if="record.state === 'shutoff'" size="small" @click="openClone(record.name)">克隆</a-button>
                 <a-popconfirm content="确认删除？" @ok="doDelete(record.name)">
                   <a-button size="small" status="danger">删除</a-button>
@@ -194,6 +208,21 @@
               <a-option v-for="iso in createISOs" :key="iso.path" :value="iso.path">{{ iso.name }}</a-option>
             </a-select>
           </a-form-item>
+          <a-form-item label="网络模式">
+            <a-select v-model="form.netMode">
+              <a-option value="nat">NAT（默认网络）</a-option>
+              <a-option value="bridge">桥接</a-option>
+              <a-option value="macvtap">macvtap（直连局域网）</a-option>
+            </a-select>
+          </a-form-item>
+          <a-form-item v-if="form.netMode === 'bridge'" label="网桥名称">
+            <a-input v-model="form.bridgeName" placeholder="br0" />
+          </a-form-item>
+          <a-form-item v-if="form.netMode === 'macvtap'" label="物理网卡">
+            <a-select v-model="form.macvtapDev" placeholder="选择物理网卡">
+              <a-option v-for="nic in hostNICs" :key="nic.name" :value="nic.name">{{ nic.name }}{{ nic.ip ? ' (' + nic.ip + ')' : '' }}</a-option>
+            </a-select>
+          </a-form-item>
         </a-form>
       </div>
 
@@ -233,6 +262,48 @@
         </a-form-item>
       </a-form>
     </a-modal>
+
+    <!-- 重命名 -->
+    <a-modal v-model:visible="showRename" title="重命名虚拟机" @ok="onRename" :ok-loading="renaming">
+      <a-form :model="renameForm" layout="vertical">
+        <a-form-item label="新名称" required>
+          <a-input v-model="renameForm.newName" placeholder="新虚拟机名称" />
+        </a-form-item>
+      </a-form>
+    </a-modal>
+
+    <!-- 导入 -->
+    <a-modal v-model:visible="showImport" title="导入虚拟机" @ok="onImport" :ok-loading="importing">
+      <a-form :model="importForm" layout="vertical">
+        <a-form-item label="虚拟机名称" required>
+          <a-input v-model="importForm.name" placeholder="vm-imported" />
+        </a-form-item>
+        <a-form-item label="磁盘镜像路径" required>
+          <a-input v-model="importForm.diskPath" placeholder="/var/lib/libvirt/images/disk.qcow2" />
+        </a-form-item>
+        <a-row :gutter="16">
+          <a-col :span="8">
+            <a-form-item label="CPU (核)">
+              <a-input-number v-model="importForm.cpu" :min="1" :max="64" style="width:100%" />
+            </a-form-item>
+          </a-col>
+          <a-col :span="8">
+            <a-form-item label="内存 (MB)">
+              <a-input-number v-model="importForm.memory" :min="256" :step="256" style="width:100%" />
+            </a-form-item>
+          </a-col>
+          <a-col :span="8">
+            <a-form-item label="磁盘总线">
+              <a-select v-model="importForm.diskBus">
+                <a-option value="virtio">VirtIO</a-option>
+                <a-option value="sata">SATA</a-option>
+                <a-option value="ide">IDE</a-option>
+              </a-select>
+            </a-form-item>
+          </a-col>
+        </a-row>
+      </a-form>
+    </a-modal>
   </a-space>
 </template>
 
@@ -240,6 +311,7 @@
 import { ref, reactive, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { vmApi, type VM } from '../../api/vm'
+import http from '../../api/http'
 import { isoApi, type ISOFile } from '../../api/iso'
 import { Message } from '@arco-design/web-vue'
 import { IconPlus, IconCheck } from '@arco-design/web-vue/es/icon'
@@ -258,9 +330,11 @@ const form = reactive({
   name: '', cpu: 2, memory: 2048, disk: 20, iso: '',
   osType: 'linux', diskBus: '', netModel: '',
   machine: '', cpuModel: '', clock: '', virtioISO: '',
+  netMode: 'nat', bridgeName: 'br0', macvtapDev: 'eth0',
 })
 
 const createISOs = ref<ISOFile[]>([])
+const hostNICs = ref<{ name: string; mac: string; ip: string; up: boolean }[]>([])
 
 const showEdit = ref(false)
 const editing = ref(false)
@@ -269,6 +343,25 @@ const editForm = reactive({ name: '', cpu: 2, memory: 2048 })
 const showClone = ref(false)
 const cloning = ref(false)
 const cloneForm = reactive({ srcName: '', newName: '' })
+const selectedKeys = ref<string[]>([])
+const showRename = ref(false)
+const renaming = ref(false)
+const renameForm = reactive({ oldName: '', newName: '' })
+const showImport = ref(false)
+const importing = ref(false)
+const importForm = reactive({ name: '', diskPath: '', cpu: 2, memory: 2048, diskBus: 'virtio' })
+const autostartMap = ref<Record<string, boolean>>({})
+
+const loadAutostarts = async () => {
+  const map: Record<string, boolean> = {}
+  await Promise.all(vms.value.map(async (vm) => {
+    try { const r = await vmApi.getAutostart(vm.name); map[vm.name] = r.autostart } catch { map[vm.name] = false }
+  }))
+  autostartMap.value = map
+}
+const toggleAutostart = async (name: string, v: boolean) => {
+  try { await vmApi.setAutostart(name, v); Message.success(v ? '已开启自动启动' : '已关闭自动启动') } catch { Message.error('设置失败'); autostartMap.value[name] = !v }
+}
 
 // OS presets
 const osPresets = [
@@ -318,7 +411,7 @@ const stateBadge = (s: string) =>
 
 const loadVMs = async () => {
   loading.value = true
-  try { vms.value = await vmApi.list() } catch { /* */ }
+  try { vms.value = await vmApi.list(); loadAutostarts() } catch { /* */ }
   loading.value = false
 }
 
@@ -356,8 +449,9 @@ const doDelete = async (name: string) => {
 
 const openCreate = async () => {
   step.value = 1
-  Object.assign(form, { name: '', cpu: 2, memory: 2048, disk: 20, iso: '', osType: 'linux', diskBus: '', netModel: '', virtioISO: '' })
+  Object.assign(form, { name: '', cpu: 2, memory: 2048, disk: 20, iso: '', osType: 'linux', diskBus: '', netModel: '', virtioISO: '', netMode: 'nat', bridgeName: 'br0', macvtapDev: 'eth0' })
   try { createISOs.value = await isoApi.list() } catch { /* */ }
+  try { hostNICs.value = await http.get('/host/nics'); if (hostNICs.value.length) form.macvtapDev = hostNICs.value[0].name } catch { /* */ }
   showCreate.value = true
 }
 
@@ -381,6 +475,9 @@ const onCreate = async () => {
       cpu_model: form.cpuModel || undefined,
       clock: form.clock || undefined,
       virtio_iso: form.virtioISO || undefined,
+      net_mode: form.netMode || undefined,
+      bridge_name: form.netMode === 'bridge' ? form.bridgeName : undefined,
+      macvtap_dev: form.netMode === 'macvtap' ? form.macvtapDev : undefined,
     })
     if (form.iso) await vmApi.attachISO(form.name, form.iso)
     Message.success('创建成功')
@@ -416,6 +513,36 @@ const onClone = async () => {
     Message.success('克隆成功'); showClone.value = false; loadVMs()
   } catch { Message.error('克隆失败') }
   cloning.value = false
+}
+
+const openRename = (name: string) => {
+  renameForm.oldName = name; renameForm.newName = name
+  showRename.value = true
+}
+const onRename = async () => {
+  renaming.value = true
+  try {
+    await vmApi.rename(renameForm.oldName, renameForm.newName)
+    Message.success('重命名成功'); showRename.value = false; loadVMs()
+  } catch { Message.error('重命名失败') }
+  renaming.value = false
+}
+
+const onImport = async () => {
+  if (!importForm.name || !importForm.diskPath) { Message.warning('请填写名称和磁盘路径'); return }
+  importing.value = true
+  try {
+    await vmApi.import({ name: importForm.name, disk_path: importForm.diskPath, cpu: importForm.cpu, memory: importForm.memory, disk_bus: importForm.diskBus })
+    Message.success('导入成功'); showImport.value = false; Object.assign(importForm, { name: '', diskPath: '', cpu: 2, memory: 2048, diskBus: 'virtio' }); loadVMs()
+  } catch { Message.error('导入失败') }
+  importing.value = false
+}
+
+const doBatch = async (action: string) => {
+  try {
+    await vmApi.batch(selectedKeys.value, action)
+    Message.success('操作完成'); selectedKeys.value = []; loadVMs()
+  } catch { Message.error('操作失败') }
 }
 
 onMounted(loadVMs)

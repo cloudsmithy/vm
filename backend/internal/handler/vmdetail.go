@@ -98,3 +98,11 @@ func (h *Handler) CloneVM(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "cloned"})
 }
+
+func (h *Handler) FinishInstall(c *gin.Context) {
+	if err := h.svc.FinishInstall(c.Param("name")); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "ok"})
+}

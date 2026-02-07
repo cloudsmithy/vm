@@ -10,6 +10,10 @@
       </div>
       <div style="flex:1" />
       <a-space>
+        <a-switch v-model="autostart" @change="onAutostartChange" checked-text="自动启动" unchecked-text="自动启动" size="small" />
+        <a-popconfirm content="将弹出ISO并设置从硬盘启动，确认系统已安装完成？" @ok="doFinishInstall">
+          <a-button v-if="hasISO" size="small" status="success">完成安装</a-button>
+        </a-popconfirm>
         <a-button v-if="detail?.state === 'running'" @click="openVNC">控制台</a-button>
         <a-button @click="loadDetail">刷新</a-button>
       </a-space>
@@ -44,7 +48,7 @@
             <template #cell="{ record }"><a-tag size="small" color="arcoblue">{{ record.bus }}</a-tag></template>
           </a-table-column>
           <a-table-column title="格式" data-index="format" />
-          <a-table-column title="操作" :width="220">
+          <a-table-column title="操作" :width="280">
             <template #cell="{ record }">
               <a-space>
                 <a-button v-if="record.device === 'cdrom' && !record.source" size="small" @click="openAttachISO">挂载ISO</a-button>
@@ -153,7 +157,7 @@ const vmName = computed(() => route.params.name as string)
 const detail = ref<VMDetail | null>(null)
 const isos = ref<ISOFile[]>([])
 const networks = ref<Network[]>([])
-
+const autostart = ref(false)
 const showAttachDisk = ref(false)
 const showAttachISO = ref(false)
 const showAttachNIC = ref(false)
@@ -175,6 +179,10 @@ const infoCards = computed(() => {
 })
 
 const loadDetail = async () => { try { detail.value = await vmApi.detail(vmName.value) } catch { Message.error('加载失败') } }
+const hasISO = computed(() => detail.value?.disks?.some(d => d.device === 'cdrom' && d.source) ?? false)
+const doFinishInstall = async () => { try { await vmApi.finishInstall(vmName.value); Message.success('已完成安装设置，下次启动将从硬盘引导'); loadDetail() } catch { Message.error('操作失败') } }
+const loadAutostart = async () => { try { const r = await vmApi.getAutostart(vmName.value); autostart.value = r.autostart } catch {} }
+const onAutostartChange = async (v: boolean | string | number) => { try { await vmApi.setAutostart(vmName.value, v as boolean); Message.success(v ? '已开启自动启动' : '已关闭自动启动') } catch { Message.error('设置失败'); autostart.value = !v } }
 const openVNC = () => {
   const route = router.resolve({ name: 'vnc', params: { name: vmName.value } })
   window.open(route.href, '_blank')
@@ -208,8 +216,8 @@ const onAttachNIC = async () => {
 }
 const doDetachNIC = async (mac: string) => { try { await vmApi.detachNIC(vmName.value, mac); Message.success('已移除'); loadDetail() } catch { Message.error('移除失败') } }
 
-watch(vmName, () => { loadDetail(); loadNetworks() })
-onMounted(() => { loadDetail(); loadNetworks() })
+watch(vmName, () => { loadDetail(); loadNetworks(); loadAutostart() })
+onMounted(() => { loadDetail(); loadNetworks(); loadAutostart() })
 </script>
 
 <style scoped>

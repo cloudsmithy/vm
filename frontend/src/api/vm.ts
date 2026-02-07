@@ -48,12 +48,22 @@ export const vmApi = {
   suspend: (name: string) => http.post(`/vms/${name}/suspend`),
   resume: (name: string) => http.post(`/vms/${name}/resume`),
   delete: (name: string) => http.delete(`/vms/${name}`),
-  create: (data: { name: string; cpu: number; memory: number; disk: number; os_type?: string; disk_bus?: string; net_model?: string; machine?: string; cpu_model?: string; clock?: string; virtio_iso?: string }) =>
+  create: (data: { name: string; cpu: number; memory: number; disk: number; os_type?: string; disk_bus?: string; net_model?: string; machine?: string; cpu_model?: string; clock?: string; virtio_iso?: string; net_mode?: string; bridge_name?: string; macvtap_dev?: string }) =>
     http.post('/vms', data),
   update: (name: string, data: { cpu?: number; memory?: number }) =>
     http.put(`/vms/${name}`, data),
   clone: (name: string, newName: string) =>
     http.post(`/vms/${name}/clone`, { new_name: newName }),
+  getAutostart: (name: string) =>
+    http.get<any, { autostart: boolean }>(`/vms/${name}/autostart`),
+  setAutostart: (name: string, autostart: boolean) =>
+    http.put(`/vms/${name}/autostart`, { autostart }),
+  rename: (name: string, newName: string) =>
+    http.post(`/vms/${name}/rename`, { new_name: newName }),
+  import: (data: { name: string; disk_path: string; cpu?: number; memory?: number; disk_bus?: string }) =>
+    http.post('/vms/import', data),
+  batch: (names: string[], action: string) =>
+    http.post('/vms/batch', { names, action }),
   attachDisk: (name: string, data: { source: string; target?: string; bus?: string }) =>
     http.post(`/vms/${name}/disks`, data),
   detachDisk: (name: string, target: string) =>
@@ -66,4 +76,6 @@ export const vmApi = {
     http.post(`/vms/${name}/iso`, { path }),
   detachISO: (name: string) =>
     http.delete(`/vms/${name}/iso`),
+  finishInstall: (name: string) =>
+    http.post(`/vms/${name}/finish-install`),
 }

@@ -25,6 +25,7 @@ func main() {
 	api := r.Group("/api")
 	{
 		api.GET("/host/info", h.GetHostInfo)
+		api.GET("/host/nics", h.ListPhysicalNICs)
 
 		// VM CRUD + actions
 		api.GET("/vms", h.ListVMs)
@@ -40,6 +41,11 @@ func main() {
 		api.POST("/vms/:name/suspend", h.SuspendVM)
 		api.POST("/vms/:name/resume", h.ResumeVM)
 		api.POST("/vms/:name/clone", h.CloneVM)
+		api.GET("/vms/:name/autostart", h.GetAutostart)
+		api.PUT("/vms/:name/autostart", h.SetAutostart)
+		api.POST("/vms/:name/rename", h.RenameVM)
+		api.POST("/vms/import", h.ImportVM)
+		api.POST("/vms/batch", h.BatchAction)
 
 		// VM devices
 		api.POST("/vms/:name/disks", h.AttachDisk)
@@ -48,6 +54,7 @@ func main() {
 		api.DELETE("/vms/:name/nics/:mac", h.DetachNIC)
 		api.POST("/vms/:name/iso", h.AttachISO)
 		api.DELETE("/vms/:name/iso", h.DetachISO)
+		api.POST("/vms/:name/finish-install", h.FinishInstall)
 
 		// VNC
 		api.GET("/vms/:name/vnc", h.GetVNCPort)

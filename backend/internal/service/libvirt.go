@@ -235,7 +235,21 @@ func (s *LibvirtService) StartVM(name string) error {
 	if err != nil {
 		return err
 	}
-	return s.l.DomainCreate(d)
+	if err := s.l.DomainCreate(d); err != nil {
+		return err
+	}
+	// After first boot from cdrom, switch boot order to hd-first
+	// so next reboot (after OS install) boots from disk
+	xmlStr, err := s.l.DomainGetXMLDesc(d, 0)
+	if err != nil {
+		return nil // VM started, non-fatal
+	}
+	bootRe := regexp.MustCompile(`<boot dev='cdrom'/>\s*<boot dev='hd'/>`)
+	if bootRe.MatchString(xmlStr) {
+		newXML := bootRe.ReplaceAllString(xmlStr, "<boot dev='hd'/><boot dev='cdrom'/>")
+		s.l.DomainDefineXML(newXML)
+	}
+	return nil
 }
 
 func (s *LibvirtService) ShutdownVM(name string) error {
@@ -345,6 +359,122 @@ func (s *LibvirtService) ResumeVM(name string) error {
 		return err
 	}
 	return s.l.DomainResume(d)
+}
+
+func (s *LibvirtService) GetAutostart(name string) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := s.ensureConnected(); err != nil {
+		return false, err
+	}
+	d, err := s.l.DomainLookupByName(name)
+	if err != nil {
+		return false, err
+	}
+	v, err := s.l.DomainGetAutostart(d)
+	return v != 0, err
+}
+
+func (s *LibvirtService) SetAutostart(name string, enabled bool) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := s.ensureConnected(); err != nil {
+		return err
+	}
+	d, err := s.l.DomainLookupByName(name)
+	if err != nil {
+		return err
+	}
+	var v int32
+	if enabled {
+		v = 1
+	}
+	return s.l.DomainSetAutostart(d, v)
+}
+
+func (s *LibvirtService) RenameVM(oldName, newName string) error {
+	if !safeNameRe.MatchString(newName) {
+		return fmt.Errorf("invalid vm name: %s", newName)
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := s.ensureConnected(); err != nil {
+		return err
+	}
+	d, err := s.l.DomainLookupByName(oldName)
+	if err != nil {
+		return err
+	}
+	// VM must be shut off
+	state, _, _, _, _, err := s.l.DomainGetInfo(d)
+	if err != nil {
+		return err
+	}
+	if libvirt.DomainState(state) != libvirt.DomainShutoff {
+		return fmt.Errorf("vm must be shut off to rename")
+	}
+	_, err = s.l.DomainRename(d, libvirt.OptString{newName}, 0)
+	return err
+}
+
+func (s *LibvirtService) ImportVM(req model.ImportVMRequest) error {
+	if !safeNameRe.MatchString(req.Name) {
+		return fmt.Errorf("invalid vm name: %s", req.Name)
+	}
+	if req.CPU <= 0 {
+		req.CPU = 2
+	}
+	if req.Memory <= 0 {
+		req.Memory = 2048
+	}
+
+	diskBus := req.DiskBus
+	if diskBus == "" {
+		diskBus = "virtio"
+	}
+	diskDev := map[string]string{"virtio": "vda", "scsi": "sda", "sata": "sda", "ide": "hdc"}[diskBus]
+
+	format := "qcow2"
+	if strings.HasSuffix(req.DiskPath, ".raw") || strings.HasSuffix(req.DiskPath, ".img") {
+		format = "raw"
+	}
+
+	xmlDef := fmt.Sprintf(`<domain type='kvm'>
+  <name>%s</name>
+  <memory unit='MiB'>%d</memory>
+  <vcpu>%d</vcpu>
+  <os><type arch='x86_64'>hvm</type><boot dev='hd'/></os>
+  <features><acpi/><apic/></features>
+  <devices>
+    <disk type='file' device='disk'>
+      <driver name='qemu' type='%s'/>
+      <source file='%s'/>
+      <target dev='%s' bus='%s'/>
+    </disk>
+    <disk type='file' device='cdrom'>
+      <driver name='qemu' type='raw'/>
+      <target dev='hda' bus='ide'/>
+      <readonly/>
+    </disk>
+    <interface type='network'>
+      <source network='default'/>
+      <model type='virtio'/>
+    </interface>
+    <graphics type='vnc' port='-1' autoport='yes' listen='0.0.0.0'/>
+    <video>
+      <model type='qxl' ram='65536' vram='65536' vgamem='32768' heads='1' primary='yes'/>
+    </video>
+    <console type='pty'/>
+  </devices>
+</domain>`, req.Name, req.Memory, req.CPU, format, req.DiskPath, diskDev, diskBus)
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := s.ensureConnected(); err != nil {
+		return err
+	}
+	_, err := s.l.DomainDefineXML(xmlDef)
+	return err
 }
 
 func (s *LibvirtService) UpdateVM(name string, req model.UpdateVMRequest) error {
@@ -479,8 +609,13 @@ func (s *LibvirtService) CreateVM(req model.CreateVMRequest) error {
 		clockXML = "\n  <clock offset='localtime'>\n    <timer name='rtc' tickpolicy='catchup'/>\n    <timer name='pit' tickpolicy='delay'/>\n    <timer name='hpet' present='no'/>\n    <timer name='hypervclock' present='yes'/>\n  </clock>"
 	}
 
-	// Create qcow2 disk image outside the lock
+	// Check if disk already exists
 	diskPath := fmt.Sprintf("/var/lib/libvirt/images/%s.qcow2", req.Name)
+	if _, err := os.Stat(diskPath); err == nil {
+		return fmt.Errorf("磁盘文件已存在: %s，请使用其他名称", diskPath)
+	}
+
+	// Create qcow2 disk image outside the lock
 	cmd := exec.Command("qemu-img", "create", "-f", "qcow2", diskPath, fmt.Sprintf("%dG", req.Disk))
 	if output, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("create disk failed: %s", string(output))
@@ -506,6 +641,32 @@ func (s *LibvirtService) CreateVM(req model.CreateVMRequest) error {
     </disk>`, req.VirtioISO, virtioCdromDev, cdromBus)
 	}
 
+	// Network interface XML based on mode
+	netXML := fmt.Sprintf(`<interface type='network'>
+      <source network='default'/>
+      <model type='%s'/>
+    </interface>`, netModel)
+	switch req.NetMode {
+	case "bridge":
+		bridgeName := req.BridgeName
+		if bridgeName == "" {
+			bridgeName = "br0"
+		}
+		netXML = fmt.Sprintf(`<interface type='bridge'>
+      <source bridge='%s'/>
+      <model type='%s'/>
+    </interface>`, bridgeName, netModel)
+	case "macvtap":
+		dev := req.MacvtapDev
+		if dev == "" {
+			return fmt.Errorf("macvtap 模式需要指定物理网卡")
+		}
+		netXML = fmt.Sprintf(`<interface type='direct'>
+      <source dev='%s' mode='bridge'/>
+      <model type='%s'/>
+    </interface>`, dev, netModel)
+	}
+
 	xmlDef := fmt.Sprintf(`<domain type='kvm'>
   <name>%s</name>
   <memory unit='MiB'>%d</memory>
@@ -523,17 +684,14 @@ func (s *LibvirtService) CreateVM(req model.CreateVMRequest) error {
       <target dev='%s' bus='%s'/>
       <readonly/>
     </disk>%s
-    <interface type='network'>
-      <source network='default'/>
-      <model type='%s'/>
-    </interface>
+    %s
     <graphics type='vnc' port='-1' autoport='yes' listen='0.0.0.0'/>
     <video>
       <model type='qxl' ram='65536' vram='65536' vgamem='32768' heads='1' primary='yes'/>
     </video>
     <console type='pty'/>
   </devices>
-</domain>`, req.Name, req.Memory, req.CPU, cpuXML, clockXML, machineAttr, scsiCtrl, req.Name, diskDev, diskBus, cdromDev, cdromBus, virtioCD, netModel)
+</domain>`, req.Name, req.Memory, req.CPU, cpuXML, clockXML, machineAttr, scsiCtrl, req.Name, diskDev, diskBus, cdromDev, cdromBus, virtioCD, netXML)
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -605,6 +763,23 @@ func (s *LibvirtService) GetHostInfo() (*model.HostInfo, error) {
 		}
 	}
 
+	// Uptime
+	var uptime int64
+	if data, err := os.ReadFile("/proc/uptime"); err == nil {
+		var up float64
+		fmt.Sscanf(string(data), "%f", &up)
+		uptime = int64(up)
+	}
+
+	// Load average
+	var loadAvg [3]float64
+	if data, err := os.ReadFile("/proc/loadavg"); err == nil {
+		fmt.Sscanf(string(data), "%f %f %f", &loadAvg[0], &loadAvg[1], &loadAvg[2])
+	}
+
+	// Disk usage
+	disks := readDiskUsage()
+
 	return &model.HostInfo{
 		Hostname:    hostname,
 		CPUModel:    cpuModel,
@@ -614,6 +789,9 @@ func (s *LibvirtService) GetHostInfo() (*model.HostInfo, error) {
 		MemoryFree:  memAvailMiB,
 		VMRunning:   running,
 		VMTotal:     len(vms),
+		Uptime:      uptime,
+		LoadAvg:     loadAvg,
+		Disks:       disks,
 	}, nil
 }
 
@@ -646,4 +824,42 @@ func readCPUUsage() float64 {
 		return 0
 	}
 	return math.Round((1-float64(idle2-idle1)/float64(dt))*1000) / 10
+}
+
+func readDiskUsage() []model.DiskInfo {
+	out, err := exec.Command("df", "-BG", "--output=target,source,size,used,avail,pcent", "-x", "tmpfs", "-x", "devtmpfs", "-x", "overlay", "-x", "squashfs").Output()
+	if err != nil {
+		return nil
+	}
+	var disks []model.DiskInfo
+	lines := strings.Split(string(out), "\n")
+	for _, line := range lines[1:] {
+		fields := strings.Fields(line)
+		if len(fields) < 6 {
+			continue
+		}
+		mount := fields[0]
+		// Skip non-physical mounts
+		if strings.HasPrefix(mount, "/snap") || strings.HasPrefix(mount, "/boot/efi") {
+			continue
+		}
+		parseG := func(s string) uint64 {
+			s = strings.TrimSuffix(s, "G")
+			var v uint64
+			fmt.Sscanf(s, "%d", &v)
+			return v
+		}
+		pct := strings.TrimSuffix(fields[5], "%")
+		var p int
+		fmt.Sscanf(pct, "%d", &p)
+		disks = append(disks, model.DiskInfo{
+			Mount:     mount,
+			Device:    fields[1],
+			Total:     parseG(fields[2]),
+			Used:      parseG(fields[3]),
+			Available: parseG(fields[4]),
+			Percent:   p,
+		})
+	}
+	return disks
 }
